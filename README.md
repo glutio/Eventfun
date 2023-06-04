@@ -51,7 +51,7 @@ button.OnChange -= Button::ChangeEvent(this, &Program::onButtonChange); // put t
 
 ## EventDelegate
 
-Event listener is defined as a `void` function taking `sender` and `arg` as arguments. Where `sender` is the class raising the event (or `void` if used outside of a class) and `arg` is an argument of any type passed to the event listener. If you need to pass more than one argument you will need to put all your argument into a `struct`.
+Event listener is defined as a `void` function taking `sender` and `arg` as arguments. Where `sender` is the class raising the event (or `void` if used outside of a class) and `arg` is an argument of any type passed to the event listener. If you need to pass more than one argument you will need to put all your arguments into a `struct`.
 
 ```
 // declare a structure to hold all arguments
