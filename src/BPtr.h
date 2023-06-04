@@ -64,7 +64,7 @@ public:
   }
 
   // Comparison operator
-  operator ==(const BPtr& other) const {
+  bool operator ==(const BPtr& other) const {
     return ptr == other.ptr;
   }
 

@@ -10,8 +10,8 @@ protected:
   struct Callable {
     virtual ~Callable() {}
     virtual void Call(TSender* sender, TArgument argument) = 0;
-    virtual char Type() = 0;
-    virtual operator == (const Callable& other) const = 0;
+    virtual char Type() const = 0;
+    virtual bool operator == (const Callable& other) const = 0;
   };
 
   template<typename TClass>
@@ -26,11 +26,11 @@ protected:
       (_instance->*_method)(sender, argument);
     }
 
-    virtual char Type() {
+    virtual char Type() const {
       return 'M';
     }
 
-    virtual operator == (const Callable& other) const {
+    virtual bool operator == (const Callable& other) const {
       if (Type() != other.Type()) return false;
       auto callable = (const CallableMethodImpl<TClass>&)other;
       return _instance == callable._instance && _method == callable._method;
@@ -47,11 +47,11 @@ protected:
       (_func)(sender, argument);
     }
 
-    virtual char Type() {
+    virtual char Type() const {
       return 'F';
     }
 
-    virtual operator == (const Callable& other) const {
+    virtual bool operator == (const Callable& other) const {
       if (Type() != other.Type()) return false;
       auto callable = (CallableFunctionImpl&)other;
       return _func == callable._func;
@@ -66,7 +66,7 @@ public:
   typedef TArgument ArgumentType;
 
   template<typename TClass>
-  EventDelegate(const TClass* instance, void (TClass::*method)(TSender* sender, TArgument argument))
+  EventDelegate(TClass* instance, void (TClass::*method)(TSender* sender, TArgument argument))
     : _callable(new CallableMethodImpl<TClass>(instance, method)) {}
 
   EventDelegate(void (*func)(TSender* sender, TArgument argument))
@@ -89,7 +89,7 @@ protected:
     return (bool)_callable;
   }
 
-  operator == (const EventDelegate<TSender, TArgument>& other) const {
+  bool operator == (const EventDelegate<TSender, TArgument>& other) const {
     return *_callable == *other._callable;
   }
 
@@ -107,10 +107,10 @@ public:
   EventSource(int numEvents = 3) 
     : _list(numEvents) {}
   
-  operator += (EventDelegate<TSender, TArgument> delegate)
+  void operator += (EventDelegate<TSender, TArgument> delegate)
   {
     auto k = _list.Length();
-    for(auto i = 0; i < _list.Length(); ++i) {
+    for(unsigned i = 0; i < _list.Length(); ++i) {
       if (_list[i] == delegate) {
         return;
       }
@@ -127,25 +127,25 @@ public:
     }
   }
 
-  operator += (void (*delegate)(TSender*, TArgument)) {
+  void operator += (void (*delegate)(TSender*, TArgument)) {
     this += EventDelegate<TSender, TArgument>(delegate);
   }
 
-  operator -= (EventDelegate<TSender, TArgument> delegate) {
-    for (auto i = 0; i < _list.Length(); ++i) {
+  void operator -= (EventDelegate<TSender, TArgument> delegate) {
+    for (unsigned i = 0; i < _list.Length(); ++i) {
       if (_list[i] == delegate) {
         _list[i] = EventDelegate<TSender, TArgument>();
       }
     }
   }
 
-  operator -= (void (*delegate)(TSender*, TArgument)) {
+  void operator -= (void (*delegate)(TSender*, TArgument)) {
     this -= EventDelegate<TSender, TArgument>(delegate);
   }
 
 protected:
-  operator () (TSender* sender, TArgument argument) {
-    for(auto i = 0; i < _list.Length(); ++i) {
+  void operator () (TSender* sender, TArgument argument) {
+    for(unsigned i = 0; i < _list.Length(); ++i) {
       _list[i](sender, argument);
     }
   }

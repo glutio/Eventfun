@@ -46,15 +46,15 @@ public:
     _button.OnChange -= Button::ChangeEvent(this, &Program::Led11);
   }
 
-  void Led9(Button* button, bool isPressed) {
+  void Led9(Button*, bool isPressed) {
     digitalWrite(9, isPressed);
   }
 
-  void Led10(Button* button, bool isPressed) {
+  void Led10(Button*, bool isPressed) {
     digitalWrite(10, isPressed);
   }
 
-  void Led11(Button* button, bool isPressed) {
+  void Led11(Button*, bool isPressed) {
     digitalWrite(11, isPressed);
   }
 };
