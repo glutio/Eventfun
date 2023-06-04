@@ -94,3 +94,5 @@ Because `EventSource` supports multiple listeners it maintains a list of a certa
 Joystick() : OnMove(10) // expect up to 10 listeners
 {}
 ```
+## Contact
+If you need help using this library please open an [issue](https://github.com/glutio/Eventfun/issues) on GitHub.
