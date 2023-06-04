@@ -51,5 +51,46 @@ button.OnChange -= Button::ChangeEvent(this, &Program::onButtonChange); // put t
 
 ## EventDelegate
 
+Event listener is defined as a `void` function taking `sender` and `arg` as arguments. Where `sender` is the class raising the event (or `void` if used outside of a class) and `arg` is an argument of any type passed to the event listener. If you need to pass more than one argument you will need to put all your argument into a `struct`.
+
+```
+// declare a structure to hold all arguments
+struct JoystickMoveArgs {
+  int x;
+  int y;
+}
+
+// declare a listener
+void OnJoystickMove(Joystick* sender, JoystickMoveArgs args);
+
+// subscribe to the event
+joystick.OnMove += OnJoystickMove;
+```
 
 ## EventSource
+
+Declare an event in your class with `EventSource` and raise the event by calling the `operator()` on the event.
+```
+class Joystick
+public:
+  // optionally declare a friendly name for delegate type
+  typedef EventDelegate<Joystick, JoystickEventArgs> JoystickMoveEvent;
+  // declare the event
+  EventSource<Joystick, JoystickEventArgs> OnMove;
+  
+  void Update() {
+    // create the argument structure
+    JoystickEventArgs args;
+    args.x = readAnalog(xPin);
+    args.y = readAnalog(yPin);
+    // raise the event
+    OnMove(args);
+  }
+};
+```
+Because `EventSource` supports multiple listeners it maintains a list of a certain size. If more listeners subscribe the list will grow but that involves allocating memory for the new list and copying the old list to the new list. Try to avoid this by specifying the expected number of listeners, default is 3.
+```
+// provide the number of listeners via the constructor initializer list
+Joystick() : OnMove(10) // expect up to 10 listeners
+{}
+```
