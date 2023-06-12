@@ -128,7 +128,7 @@ public:
   }
 
   void operator += (void (*delegate)(TSender*, TArgument)) {
-    this += EventDelegate<TSender, TArgument>(delegate);
+    *this += EventDelegate<TSender, TArgument>(delegate);
   }
 
   void operator -= (EventDelegate<TSender, TArgument> delegate) {
@@ -140,7 +140,7 @@ public:
   }
 
   void operator -= (void (*delegate)(TSender*, TArgument)) {
-    this -= EventDelegate<TSender, TArgument>(delegate);
+    *this -= EventDelegate<TSender, TArgument>(delegate);
   }
 
 protected:
