@@ -84,7 +84,7 @@ public:
     args.x = readAnalog(xPin);
     args.y = readAnalog(yPin);
     // raise the event
-    OnMove(args);
+    OnMove(this, args);
   }
 };
 ```
