@@ -58,7 +58,7 @@ Event listener is defined as a `void` function taking `sender` and `arg` as argu
 struct JoystickMoveArgs {
   int x;
   int y;
-}
+};
 
 // declare a listener
 void OnJoystickMove(Joystick* sender, JoystickMoveArgs args);
@@ -75,6 +75,7 @@ class Joystick
 public:
   // optionally declare a friendly name for delegate type
   typedef EventDelegate<Joystick, JoystickEventArgs> JoystickMoveEvent;
+
   // declare the event
   EventSource<Joystick, JoystickEventArgs> OnMove;
   
@@ -83,6 +84,7 @@ public:
     JoystickEventArgs args;
     args.x = readAnalog(xPin);
     args.y = readAnalog(yPin);
+
     // raise the event
     OnMove(this, args);
   }
