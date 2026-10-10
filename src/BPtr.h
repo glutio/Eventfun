@@ -14,43 +14,31 @@ private:
 public:
   // Constructor
   explicit BPtr(T* p = nullptr)
-    : ptr(p), refCount(new int(1)) {
+    : ptr(p), refCount(p ? new int(1) : nullptr) {
   }
 
   // Copy constructor
   BPtr(const BPtr& other)
     : ptr(other.ptr), refCount(other.refCount) {
-    (*refCount)++;
+    if (refCount) (*refCount)++;
   }
 
   // Assignment operator
   BPtr& operator=(const BPtr& other) {
     if (this != &other) {
-      // Decrease the reference count of the current object
-      (*refCount)--;
-
-      // If the reference count becomes zero, delete the object and refCount
-      if (*refCount == 0) {
-        delete ptr;
-        delete refCount;
-      }
+      Release();
 
       // Assign the new object and increase its reference count
       ptr = other.ptr;
       refCount = other.refCount;
-      (*refCount)++;
+      if (refCount) (*refCount)++;
     }
     return *this;
   }
 
   // Destructor
   ~BPtr() {
-    (*refCount)--;
-
-    if (*refCount == 0) {
-      delete ptr;
-      delete refCount;
-    }
+    Release();
   }
 
   // Dereference operator
@@ -71,6 +59,17 @@ public:
   // Conversion operator to bool
   explicit operator bool() const {
     return ptr != nullptr;
+  }
+
+private:
+  void Release() {
+    if (refCount) {
+      (*refCount)--;
+      if (*refCount == 0) {
+        delete ptr;
+        delete refCount;
+      }
+    }
   }
 };
 

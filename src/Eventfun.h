@@ -1,100 +1,89 @@
 #ifndef __EVENTFUN_H__
 #define __EVENTFUN_H__
 
-#include "BPtr.h"
+#include <string.h>
 #include "BList.h"
 
+// EventDelegate type-erases either a free function or an instance method
+// with signature void(TSender*, TArgument) without any heap allocation,
+// virtual dispatch, or RTTI. The member-function pointer is copied into a
+// small fixed-size buffer and invoked through a per-TClass trampoline
+// function. Because Trampoline<TClass> is a distinct function template
+// instantiation, its address is unique per TClass, which gives us a
+// type-safe comparison key (no typeid needed) at essentially zero cost -
+// important on Arduino targets where RTTI is typically unavailable and
+// memory is scarce.
 template<typename TSender, typename TArgument>
 class EventDelegate {
-protected:
-  struct Callable {
-    virtual ~Callable() {}
-    virtual void Call(TSender* sender, TArgument argument) = 0;
-    virtual char Type() const = 0;
-    virtual bool operator == (const Callable& other) const = 0;
-  };
-
-  template<typename TClass>
-  struct CallableMethodImpl : public Callable {
-    TClass* _instance;
-    void (TClass::*_method)(TSender*, TArgument);
-
-    CallableMethodImpl(TClass* instance, void (TClass::*method)(TSender*, TArgument))
-      : _instance(instance), _method(method) {}
-
-    virtual void Call(TSender* sender, TArgument argument) {
-      (_instance->*_method)(sender, argument);
-    }
-
-    virtual char Type() const {
-      return 'M';
-    }
-
-    virtual bool operator == (const Callable& other) const {
-      if (Type() != other.Type()) return false;
-      auto callable = (const CallableMethodImpl<TClass>&)other;
-      return _instance == callable._instance && _method == callable._method;
-    }
-  };
-
-  struct CallableFunctionImpl : public Callable {
-    void (*_func)(TSender*, TArgument);
-
-    CallableFunctionImpl(void (*func)(TSender*, TArgument))
-      : _func(func) {}
-
-    virtual void Call(TSender* sender, TArgument argument) {
-      (_func)(sender, argument);
-    }
-
-    virtual char Type() const {
-      return 'F';
-    }
-
-    virtual bool operator == (const Callable& other) const {
-      if (Type() != other.Type()) return false;
-      auto callable = (CallableFunctionImpl&)other;
-      return _func == callable._func;
-    }
-  };
-
-protected:
-  Buratino::BPtr<Callable> _callable;  // smart pointer
-
 public:
   typedef TSender SenderType;
   typedef TArgument ArgumentType;
 
-  template<typename TClass>
-  EventDelegate(TClass* instance, void (TClass::*method)(TSender* sender, TArgument argument))
-    : _callable(new CallableMethodImpl<TClass>(instance, method)) {}
-
-  EventDelegate(void (*func)(TSender* sender, TArgument argument))
-    : _callable(new CallableFunctionImpl(func)) {}
-
   EventDelegate()
-    : _callable(0) {}
-
-  ~EventDelegate() {
+    : _instance(0), _invoke(0) {
+    memset(_method, 0, sizeof(_method));
   }
 
-  void operator()(TSender* sender, TArgument argument) {
-    if (_callable) {
-      _callable->Call(sender, argument);
+  EventDelegate(void (*func)(TSender* sender, TArgument argument))
+    : _instance(0), _invoke(&EventDelegate::InvokeFunction) {
+    memset(_method, 0, sizeof(_method));
+    memcpy(_method, &func, sizeof(func));
+  }
+
+  template<typename TClass>
+  EventDelegate(TClass* instance, void (TClass::*method)(TSender* sender, TArgument argument))
+    : _instance(instance), _invoke(&EventDelegate::template InvokeMethod<TClass>) {
+    static_assert(sizeof(method) <= sizeof(_method), "Member function pointer too large for EventDelegate storage");
+    memset(_method, 0, sizeof(_method));
+    memcpy(_method, &method, sizeof(method));
+  }
+
+  void operator()(TSender* sender, TArgument argument) const {
+    if (_invoke) {
+      _invoke(_instance, _method, sender, argument);
     }
   }
 
 protected:
   explicit operator bool() const {
-    return (bool)_callable;
+    return _invoke != 0;
   }
 
   bool operator == (const EventDelegate<TSender, TArgument>& other) const {
-    return *_callable == *other._callable;
+    if (_invoke != other._invoke) return false;
+    if (!_invoke) return true; // both are empty/unset delegates
+    if (_instance != other._instance) return false;
+    return memcmp(_method, other._method, sizeof(_method)) == 0;
   }
 
   template<typename, typename>
   friend class EventSource;
+
+private:
+  typedef void (*InvokeFn)(void* instance, const char* method, TSender* sender, TArgument argument);
+  typedef void (*FreeFunc)(TSender*, TArgument);
+
+  template<typename TClass>
+  static void InvokeMethod(void* instance, const char* methodBytes, TSender* sender, TArgument argument) {
+    void (TClass::*method)(TSender*, TArgument);
+    memcpy(&method, methodBytes, sizeof(method));
+    (static_cast<TClass*>(instance)->*method)(sender, argument);
+  }
+
+  static void InvokeFunction(void* instance, const char* methodBytes, TSender* sender, TArgument argument) {
+    FreeFunc func;
+    memcpy(&func, methodBytes, sizeof(func));
+    func(sender, argument);
+  }
+
+  // Generous enough for ordinary single/multiple-inheritance member function
+  // pointers on common embedded ABIs (AVR, ARM/Itanium); static_assert above
+  // turns an oversized pointer into a compile error instead of corruption.
+  static const unsigned MethodStorageSize = sizeof(void*) * 4;
+
+  void* _instance;
+  char _method[MethodStorageSize];
+  InvokeFn _invoke;
 };
 
 template<typename TSender, typename TArgument>
