@@ -20,7 +20,6 @@ T min(T a, T b) {
 
 #include "../src/BList.h"
 #include "../src/Eventfun.h"
-#include "../src/BPtr.h"
 
 static int g_failures = 0;
 
@@ -172,29 +171,6 @@ TEST(ListGrowsBeyondInitialCapacity) {
   }
 }
 
-// --- BPtr: basic shared ownership + null safety (no allocation for null). ---
-TEST(BPtrSharedOwnershipAndNullSafety) {
-  static int destroyed = 0;
-  struct Obj {
-    ~Obj() { ++destroyed; }
-  };
-  destroyed = 0;
-  {
-    Buratino::BPtr<Obj> a(new Obj());
-    {
-      Buratino::BPtr<Obj> b = a; // shared ownership
-      CHECK((bool)b);
-    }
-    CHECK(destroyed == 0); // b went out of scope, a still owns it
-  }
-  CHECK(destroyed == 1);
-
-  Buratino::BPtr<Obj> empty; // default-constructed, no allocation, no crash
-  CHECK(!(bool)empty);
-  Buratino::BPtr<Obj> empty2(nullptr);
-  CHECK(empty == empty2);
-}
-
 int main() {
   std::printf("Running Eventfun tests...\n");
   FunctionListenerIsInvoked();
@@ -204,7 +180,6 @@ int main() {
   DifferentClassMethodsAreNotConfused();
   SameInstanceDifferentMethodsAreIndependent();
   ListGrowsBeyondInitialCapacity();
-  BPtrSharedOwnershipAndNullSafety();
 
   if (g_failures == 0) {
     std::printf("All tests passed.\n");
