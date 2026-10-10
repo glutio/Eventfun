@@ -76,10 +76,15 @@ private:
     func(sender, argument);
   }
 
-  // Generous enough for ordinary single/multiple-inheritance member function
-  // pointers on common embedded ABIs (AVR, ARM/Itanium); static_assert above
-  // turns an oversized pointer into a compile error instead of corruption.
-  static const unsigned MethodStorageSize = sizeof(void*) * 4;
+  // Member-function pointers need exactly 2*sizeof(void*) bytes on every
+  // GCC/Clang-based Arduino toolchain (AVR, ARM, Xtensa, RISC-V) - verified
+  // directly by cross-compiling probes for avr-g++ (ATmega328P) and
+  // arm-none-eabi-g++ (SAMD21 Cortex-M0+): simple, polymorphic-base,
+  // multiple-inheritance, and virtual-multiple-inheritance member pointers
+  // all measured 2*sizeof(void*) on both. static_assert above still turns
+  // an unexpectedly larger pointer into a compile error instead of silent
+  // buffer corruption.
+  static const unsigned MethodStorageSize = sizeof(void*) * 2;
 
   void* _instance;
   char _method[MethodStorageSize];
