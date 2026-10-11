@@ -90,11 +90,18 @@ public:
   }
 };
 ```
-Because `EventSource` supports multiple listeners it maintains a list of a certain size. If more listeners subscribe the list will grow but that involves allocating memory for the new list and copying the old list to the new list. Try to avoid this by specifying the expected number of listeners, default is 3.
+`+=` returns `false` if there is no room for the listener (subscribing the same listener twice returns `true`).
+
+By default an `EventSource` keeps its listeners in a list on the heap that grows as listeners subscribe (nothing is allocated until the first one). If you know the expected number of listeners you can reserve the room up front:
 ```
-// provide the number of listeners via the constructor initializer list
 Joystick() : OnMove(10) // expect up to 10 listeners
 {}
 ```
+Or keep a fixed number of listeners inside the event itself, with no heap at all, by giving the capacity as the third template argument. `+=` returns `false` once all the slots are taken.
+```
+EventSource<Joystick, JoystickEventArgs, 2> OnMove; // up to 2 listeners, no heap
+```
+
+Eventfun uses the [Buratino](https://github.com/glutio/Buratino) library, which the Library Manager installs with it.
 ## Contact
 If you need help using this library please open an [issue](https://github.com/glutio/Eventfun/issues) on GitHub.

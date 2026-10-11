@@ -1,24 +1,18 @@
 // Native (non-Arduino) regression tests for Eventfun.
 //
+// Needs the Buratino library (https://github.com/glutio/Buratino) on the
+// include path, e.g. a checkout next to this repository.
+//
 // Build & run (MSVC, from repo root):
-//   cl /nologo /EHsc /std:c++14 /Fe:tests\run_tests.exe tests\EventfunTests.cpp
+//   cl /nologo /EHsc /std:c++14 /I..\Buratino\src /Fe:tests\run_tests.exe tests\EventfunTests.cpp
 //   tests\run_tests.exe
 //
 // Build & run (g++/clang++, from repo root):
-//   g++ -std=c++14 -o tests/run_tests tests/EventfunTests.cpp && ./tests/run_tests
-//
-// BList.h uses the bare `min()` function, which Arduino.h normally supplies
-// globally. Provide the same shim here for a native build.
+//   g++ -std=c++14 -I../Buratino/src -o tests/run_tests tests/EventfunTests.cpp && ./tests/run_tests
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
-template<typename T>
-T min(T a, T b) {
-  return a < b ? a : b;
-}
-
-#include "../src/BList.h"
 #include "../src/Eventfun.h"
 
 static int g_failures = 0;
@@ -37,14 +31,14 @@ static int g_failures = 0;
 // sender class). Derived classes get access to protected members regardless
 // of the `friend TSender` declaration, so this lets tests raise events the
 // same way a real sender class would.
-template<typename TSender, typename TArgument>
-struct Raiser : EventSource<TSender, TArgument> {
-  using EventSource<TSender, TArgument>::operator();
+template<typename TSender, typename TArgument, unsigned N>
+struct Raiser : EventSource<TSender, TArgument, N> {
+  using EventSource<TSender, TArgument, N>::operator();
 };
 
-template<typename TSender, typename TArgument>
-static void Raise(EventSource<TSender, TArgument>& source, TSender* sender, TArgument arg) {
-  static_cast<Raiser<TSender, TArgument>&>(source)(sender, arg);
+template<typename TSender, typename TArgument, unsigned N>
+static void Raise(EventSource<TSender, TArgument, N>& source, TSender* sender, TArgument arg) {
+  static_cast<Raiser<TSender, TArgument, N>&>(source)(sender, arg);
 }
 
 struct Counter {
@@ -171,6 +165,51 @@ TEST(ListGrowsBeyondInitialCapacity) {
   }
 }
 
+// --- In-place storage: a fixed number of listeners, never allocates. ---
+TEST(InPlaceSourceHoldsCapacityListeners) {
+  CounterA a;
+  CounterB b;
+  typedef EventDelegate<void, bool> Del;
+  EventSource<void, bool, 1> source;
+  CHECK(sizeof(source) == sizeof(Del));
+  CHECK(source += Del(&a, &CounterA::Method));
+  CHECK(!(source += Del(&b, &CounterB::Method)));  // full
+  CHECK(source += Del(&a, &CounterA::Method));     // already there
+  source -= Del(&a, &CounterA::Method);
+  CHECK(source += Del(&b, &CounterB::Method));     // the slot is free again
+  Raise(source, (void*)nullptr, true);
+  CHECK(a.calls == 0);
+  CHECK(b.calls == 1);
+}
+
+TEST(EmptyDelegateIsRejected) {
+  EventSource<void, bool> source;
+  CHECK(!(source += EventDelegate<void, bool>()));
+}
+
+// --- A listener may unsubscribe itself while the event is being raised. ---
+struct SelfRemover {
+  EventSource<void, bool, 2>* source = nullptr;
+  int calls = 0;
+  void Method(void*, bool) {
+    ++calls;
+    *source -= EventDelegate<void, bool>(this, &SelfRemover::Method);
+  }
+};
+
+TEST(ListenerCanUnsubscribeItselfWhileRaised) {
+  SelfRemover remover;
+  CounterA after;
+  EventSource<void, bool, 2> source;
+  remover.source = &source;
+  source += EventDelegate<void, bool>(&remover, &SelfRemover::Method);
+  source += EventDelegate<void, bool>(&after, &CounterA::Method);
+  Raise(source, (void*)nullptr, true);
+  Raise(source, (void*)nullptr, true);
+  CHECK(remover.calls == 1);
+  CHECK(after.calls == 2);
+}
+
 int main() {
   std::printf("Running Eventfun tests...\n");
   FunctionListenerIsInvoked();
@@ -180,6 +219,9 @@ int main() {
   DifferentClassMethodsAreNotConfused();
   SameInstanceDifferentMethodsAreIndependent();
   ListGrowsBeyondInitialCapacity();
+  InPlaceSourceHoldsCapacityListeners();
+  EmptyDelegateIsRejected();
+  ListenerCanUnsubscribeItselfWhileRaised();
 
   if (g_failures == 0) {
     std::printf("All tests passed.\n");

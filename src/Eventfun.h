@@ -2,7 +2,7 @@
 #define __EVENTFUN_H__
 
 #include <string.h>
-#include "BList.h"
+#include <Buratino.h>
 
 // EventDelegate type-erases either a free function or an instance method
 // with signature void(TSender*, TArgument) without any heap allocation,
@@ -56,7 +56,7 @@ protected:
     return memcmp(_method, other._method, sizeof(_method)) == 0;
   }
 
-  template<typename, typename>
+  template<typename, typename, unsigned>
   friend class EventSource;
 
 private:
@@ -70,7 +70,7 @@ private:
     (static_cast<TClass*>(instance)->*method)(sender, argument);
   }
 
-  static void InvokeFunction(void* instance, const char* methodBytes, TSender* sender, TArgument argument) {
+  static void InvokeFunction(void*, const char* methodBytes, TSender* sender, TArgument argument) {
     FreeFunc func;
     memcpy(&func, methodBytes, sizeof(func));
     func(sender, argument);
@@ -91,56 +91,85 @@ private:
   InvokeFn _invoke;
 };
 
-template<typename TSender, typename TArgument>
-class EventSource
-{
+// Where an EventSource keeps its delegates: Capacity slots inside the object
+// (no heap), or with Capacity 0 a heap list that grows as listeners subscribe.
+template<typename TDelegate, unsigned Capacity>
+class EventSlots {
 protected:
-  Buratino::BList<EventDelegate<TSender, TArgument>> _list;
+  TDelegate _slots[Capacity];
+  explicit EventSlots(unsigned) {}
+  unsigned slotCount() { return Capacity; }
+  TDelegate& slot(unsigned i) { return _slots[i]; }
+  bool addSlot(const TDelegate&) { return false; }
+};
+
+template<typename TDelegate>
+class EventSlots<TDelegate, 0> {
+protected:
+  Buratino::BList<TDelegate> _slots;
+  explicit EventSlots(unsigned capacity) : _slots(capacity) {}
+  unsigned slotCount() { return _slots.Length(); }
+  TDelegate& slot(unsigned i) { return _slots[i]; }
+  bool addSlot(const TDelegate& delegate) { return _slots.Add(delegate); }
+};
+
+// An event. Capacity > 0 stores that many listeners in place (no heap);
+// Capacity 0 (the default) grows on the heap, starting with `capacity` slots
+// (none until the first listener subscribes, if 0).
+template<typename TSender, typename TArgument, unsigned Capacity = 0>
+class EventSource : protected EventSlots<EventDelegate<TSender, TArgument>, Capacity>
+{
+  typedef EventDelegate<TSender, TArgument> Delegate;
 
 public:
-  EventSource(int numEvents = 3) 
-    : _list(numEvents) {}
-  
-  void operator += (EventDelegate<TSender, TArgument> delegate)
-  {
-    auto k = _list.Length();
-    for(unsigned i = 0; i < _list.Length(); ++i) {
-      if (_list[i] == delegate) {
-        return;
-      }
-      if (!_list[i]) {
-        k = i;
-      }
-    }
+  explicit EventSource(unsigned capacity = 0)
+    : EventSlots<Delegate, Capacity>(capacity) {}
 
-    if (k == _list.Length()) {
-      _list.Add(delegate);
+  // Returns false if the delegate is empty or there is no room (all in-place
+  // slots taken, or out of memory). Subscribing twice is a no-op that
+  // returns true.
+  bool operator += (Delegate delegate) {
+    if (!delegate) {
+      return false;
     }
-    else {
-      _list[k] = delegate;
+    Delegate* empty = 0;
+    for (unsigned i = 0; i < this->slotCount(); ++i) {
+      Delegate& d = this->slot(i);
+      if (d == delegate) {
+        return true;
+      }
+      if (!empty && !d) {
+        empty = &d;
+      }
     }
+    if (empty) {
+      *empty = delegate;
+      return true;
+    }
+    return this->addSlot(delegate);
   }
 
-  void operator += (void (*delegate)(TSender*, TArgument)) {
-    *this += EventDelegate<TSender, TArgument>(delegate);
+  bool operator += (void (*delegate)(TSender*, TArgument)) {
+    return *this += Delegate(delegate);
   }
 
-  void operator -= (EventDelegate<TSender, TArgument> delegate) {
-    for (unsigned i = 0; i < _list.Length(); ++i) {
-      if (_list[i] == delegate) {
-        _list[i] = EventDelegate<TSender, TArgument>();
+  void operator -= (Delegate delegate) {
+    for (unsigned i = 0; i < this->slotCount(); ++i) {
+      if (this->slot(i) == delegate) {
+        this->slot(i) = Delegate();
       }
     }
   }
 
   void operator -= (void (*delegate)(TSender*, TArgument)) {
-    *this -= EventDelegate<TSender, TArgument>(delegate);
+    *this -= Delegate(delegate);
   }
 
 protected:
   void operator () (TSender* sender, TArgument argument) {
-    for(unsigned i = 0; i < _list.Length(); ++i) {
-      _list[i](sender, argument);
+    for (unsigned i = 0; i < this->slotCount(); ++i) {
+      Delegate d = this->slot(i);  // a listener may (un)subscribe while running
+      d(sender, argument);
     }
   }
 
